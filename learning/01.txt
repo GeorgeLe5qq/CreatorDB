@@ -1,0 +1,174 @@
+可以。你现在面对的 CreatorDB / SimpleDB，本质上是一个“从零实现小型关系型数据库内核”的教学项目。作为初学者，不建议一上
+  来就啃所有代码，而是按数据库系统的执行链路来学。
+
+  建议你按这个顺序：
+
+  ## 1. 先建立整体地图
+
+  先知道数据库做什么：
+
+  SQL 查询大致会经过：
+
+  SQL
+   -> Parser 解析
+   -> LogicalPlan 逻辑计划
+   -> Optimizer 优化
+   -> Operator 执行
+   -> BufferPool 读写页
+   -> HeapFile / B+TreeFile 访问磁盘文件
+   -> Transaction / Lock / Log 保证并发与恢复
+
+  对应项目目录大概是：
+
+  src/main/java/simpledb/common       全局对象、配置、类型
+  src/main/java/simpledb/storage      Tuple、Page、HeapFile、BufferPool
+  src/main/java/simpledb/execution    SeqScan、Filter、Join、Aggregate 等算子
+  src/main/java/simpledb/optimizer    查询优化、统计信息、Join 顺序
+  src/main/java/simpledb/transaction  事务、锁、并发控制
+  src/main/java/simpledb/index        B+ 树索引
+
+  你先不要急着看 optimizer、transaction、index，它们是后面的内容。
+
+  ## 2. 第一阶段：学存储模型
+
+  优先看这些类：
+
+  src/main/java/simpledb/common/Type.java
+  src/main/java/simpledb/storage/Field.java
+  src/main/java/simpledb/storage/IntField.java
+  src/main/java/simpledb/storage/StringField.java
+  src/main/java/simpledb/storage/TupleDesc.java
+  src/main/java/simpledb/storage/Tuple.java
+  src/main/java/simpledb/storage/Page.java
+  src/main/java/simpledb/storage/HeapPage.java
+  src/main/java/simpledb/storage/HeapFile.java
+  src/main/java/simpledb/storage/BufferPool.java
+
+  你要理解几个核心概念：
+
+  - TupleDesc：一张表的 schema，也就是每列的类型和名字。
+  - Tuple：一行数据。
+  - Field：一列的值，比如 int 或 string。
+  - Page：磁盘页，数据库读写的基本单位。
+  - HeapPage：普通表文件里的一个页。
+  - HeapFile：一张表对应的磁盘文件。
+  - BufferPool：缓存池，所有页面读写都要经过它。
+
+  学习目标：
+
+  一行数据 Tuple 如何被描述？
+  一页 HeapPage 里如何放多行 Tuple？
+  HeapFile 如何从磁盘读出某一页？
+  BufferPool 为什么是数据库的核心入口？
+
+  ## 3. 第二阶段：学执行器 Volcano 模型
+
+  然后看：
+
+  src/main/java/simpledb/execution/OpIterator.java
+  src/main/java/simpledb/execution/Operator.java
+  src/main/java/simpledb/execution/SeqScan.java
+  src/main/java/simpledb/execution/Filter.java
+  src/main/java/simpledb/execution/Join.java
+  src/main/java/simpledb/execution/Aggregate.java
+  src/main/java/simpledb/execution/Insert.java
+  src/main/java/simpledb/execution/Delete.java
+
+  SimpleDB 使用的是 Volcano 模型，也就是每个算子都像迭代器：
+
+  open();
+  while (hasNext()) {
+      Tuple t = next();
+  }
+  close();
+
+  你可以把 SQL 想象成一棵执行树：
+
+  SELECT * FROM users WHERE age > 18;
+
+  大概对应：
+
+  Filter(age > 18)
+      |
+   SeqScan(users)
+
+  SeqScan 一行一行吐数据，Filter 判断条件，符合就继续往上吐。
+
+  ## 4. 第三阶段：学查询优化
+
+  再看：
+
+  src/main/java/simpledb/optimizer/TableStats.java
+  src/main/java/simpledb/optimizer/IntHistogram.java
+  src/main/java/simpledb/optimizer/JoinOptimizer.java
+  src/main/java/simpledb/optimizer/LogicalPlan.java
+
+  这里的核心问题是：
+
+  同一个 SQL 有很多种执行方式，数据库怎么选比较快的那个？
+
+  比如三表 join：
+
+  A JOIN B JOIN C
+
+  可以先 A join B，也可以先 B join C。优化器会用统计信息估算代价，然后选择较优顺序。
+
+  初学时只需要先理解：
+
+  - 直方图用于估算选择率。
+  - TableStats 用于估算扫描成本和结果行数。
+  - JoinOptimizer 用动态规划找 join 顺序。
+
+  ## 5. 第四阶段：学事务与锁
+
+  之后看：
+
+  src/main/java/simpledb/transaction/TransactionId.java
+  src/main/java/simpledb/transaction/Permissions.java
+  src/main/java/simpledb/storage/BufferPool.java
+
+  这部分重点是：
+
+  多个事务同时读写数据库，怎么避免数据错乱？
+
+  你需要理解：
+
+  - 读锁 / 写锁
+  - 两阶段锁协议 2PL
+  - 死锁
+  - 提交与回滚
+  - BufferPool.getPage() 为什么适合做加锁入口
+
+  这部分难度会明显上升，建议等你把存储和执行器看懂后再学。
+
+  ## 6. 第五阶段：学 B+ 树索引
+
+  最后看：
+
+  src/main/java/simpledb/index
+
+  B+ 树涉及很多页类型、分裂、合并、重分布。初学者直接看会很吃力。
+
+  建议你先掌握：
+
+  HeapFile 全表扫描为什么慢？
+  索引为什么能加速查询？
+  B+ 树为什么适合范围查询？
+
+  然后再看具体实现。
+
+  ## 推荐学习路线
+
+  你可以按这个节奏来：
+
+  1. 读 README.md 和 document/lab1-resolve.md
+  2. 看 TupleDesc、Tuple、HeapPage、HeapFile
+  3. 跑对应测试，比如 TupleTest、HeapPageReadTest
+  4. 看 SeqScan、Filter、Join
+  5. 跑执行器相关测试
+  6. 再进入优化器、事务、索引、日志恢复
+
+  最重要的是：不要从 Parser 或 LogicalPlan 开始。它们在上层，依赖你已经理解底层存储和算子。
+
+  我建议我们下一步从 TupleDesc 和 Tuple 开始，我可以带你逐个类读：先讲它解决什么问题，再讲字段和方法，最后用一个小例子串
+  起来。
