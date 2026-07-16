@@ -27,3 +27,7 @@
 ## Agent 专用说明
 
 本仓库包含 `.codegraph/`。定位代码或分析调用路径时，应先查询 CodeGraph，再回退到文本搜索，例如：`codegraph explore "BufferPool getPage locking"`。
+
+## 注意事项
+
+- 一定不要执行任何删除文件的操作
