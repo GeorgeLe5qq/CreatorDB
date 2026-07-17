@@ -299,6 +299,96 @@ BufferPool 负责统一读取和缓存页面
 5. 最后看 `BufferPool`：理解为什么所有读写都要经过它。
 
 现在先别急着学事务、锁、优化器。第一阶段的目标很朴素：**能把“一张表在 SimpleDB 里是怎么变成文件、页、行、字段的”讲清楚。**
+## Mermaid 理解图
+
+这张图可以当成第一阶段的“地图”。从下往上看，就是数据从磁盘文件一路变成一行行 `Tuple` 的过程。
+
+```mermaid
+flowchart TB
+    subgraph ValueLayer["字段和值"]
+        Type["Type<br/>字段类型<br/>INT_TYPE / STRING_TYPE"]
+        Field["Field<br/>字段值接口"]
+        IntField["IntField<br/>整数值"]
+        StringField["StringField<br/>字符串值"]
+
+        Field --> IntField
+        Field --> StringField
+        Type -.决定字段类型.-> Field
+    end
+
+    subgraph RowLayer["一行数据"]
+        TupleDesc["TupleDesc<br/>一行数据的结构说明<br/>schema"]
+        TDItem["TDItem<br/>fieldType + fieldName"]
+        Tuple["Tuple<br/>真正的一行数据"]
+        Fields["Field[] fields<br/>这一行里的每列值"]
+        RecordId["RecordId<br/>这行数据在磁盘中的位置"]
+
+        TupleDesc --> TDItem
+        Tuple --> TupleDesc
+        Tuple --> Fields
+        Tuple --> RecordId
+        Fields --> Field
+    end
+
+    subgraph PageLayer["一页数据"]
+        Page["Page<br/>数据库读写磁盘的基本单位"]
+        HeapPage["HeapPage<br/>普通表文件中的一页"]
+        HeapPageId["HeapPageId<br/>tableId + pageNo"]
+        Header["header<br/>槽位占用标记"]
+        Tuples["Tuple[] tuples<br/>一页里的多行数据"]
+
+        Page --> HeapPage
+        HeapPage --> HeapPageId
+        HeapPage --> Header
+        HeapPage --> Tuples
+        HeapPage --> TupleDesc
+        Tuples --> Tuple
+        RecordId --> HeapPageId
+    end
+
+    subgraph FileLayer["表文件"]
+        DbFile["DbFile<br/>表文件接口"]
+        HeapFile["HeapFile<br/>一张表对应的磁盘文件"]
+        DiskFile["File<br/>磁盘上的实际文件"]
+        ReadPage["readPage(pid)<br/>按页读取磁盘"]
+
+        DbFile --> HeapFile
+        HeapFile --> DiskFile
+        HeapFile --> ReadPage
+        ReadPage --> HeapPage
+    end
+
+    subgraph AccessLayer["统一访问入口"]
+        BufferPool["BufferPool<br/>页面缓存池<br/>数据库读写核心入口"]
+        Cache["LRU Cache<br/>缓存 Page"]
+        Catalog["Catalog<br/>根据 tableId 找到 HeapFile"]
+        GetPage["getPage(tid, pid, perm)<br/>获取页面"]
+
+        BufferPool --> GetPage
+        BufferPool --> Cache
+        GetPage --> Cache
+        GetPage --> Catalog
+        Catalog --> HeapFile
+        GetPage --> ReadPage
+    end
+
+    SeqScan["SeqScan / HeapFileIterator<br/>执行器扫描表"] --> BufferPool
+```
+
+最核心的记忆链路是：
+
+```text
+Field 组成 Tuple
+Tuple 放进 HeapPage
+HeapPage 存在 HeapFile
+读 HeapPage 要经过 BufferPool
+```
+
+也就是：
+
+```text
+字段 -> 一行 -> 一页 -> 一个表文件 -> 缓存池统一读取
+```
 ## 学习进度
 
 - 开始日期：
